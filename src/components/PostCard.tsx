@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,6 +37,14 @@ interface PostCardProps {
 export function PostCard({ post, productName, onAction }: PostCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [showUndo, setShowUndo] = useState(false)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Cleanup undo timer on unmount
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    }
+  }, [])
 
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime()
@@ -48,7 +56,8 @@ export function PostCard({ post, productName, onAction }: PostCardProps) {
   async function handleSkip() {
     await onAction(post.id, 'skipped')
     setShowUndo(true)
-    setTimeout(() => setShowUndo(false), 6000)
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+    undoTimerRef.current = setTimeout(() => setShowUndo(false), 6000)
   }
 
   const body = post.body ?? ''

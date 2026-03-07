@@ -7,7 +7,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const { draftId, body } = await req.json()
 
-  await db
+  if (!draftId) return NextResponse.json({ error: 'draftId is required' }, { status: 400 })
+  if (!body || typeof body !== 'string' || body.trim().length === 0) {
+    return NextResponse.json({ error: 'Reply body cannot be empty' }, { status: 400 })
+  }
+
+  const [updatedDraft] = await db
     .update(replyDrafts)
     .set({
       body,
@@ -15,6 +20,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       approvedAt: new Date().toISOString(),
     })
     .where(eq(replyDrafts.id, draftId))
+    .returning()
+
+  if (!updatedDraft) return NextResponse.json({ error: 'Draft not found' }, { status: 404 })
 
   await db
     .update(redditPosts)
