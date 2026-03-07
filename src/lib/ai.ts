@@ -115,11 +115,11 @@ export async function generateReplyDraft(
 
   // Mock fallback when no API key
   if (!client) {
-    return `Based on what you're describing, you might find ${product.name} useful — it ${product.description.split('.')[0].toLowerCase()}.
+    return `Based on what you're describing, ${product.name} might be exactly what you need. ${product.description.split('.')[0]}.
 
 ${utmUrl}
 
-It handles the exact scenario you're dealing with and works entirely in the browser.`
+It works entirely in the browser and handles the exact scenario you're dealing with.`
   }
 
   const systemInstruction = `You are helping the creator of "${product.name}" respond to Reddit posts in a genuine, helpful, non-spammy way.
