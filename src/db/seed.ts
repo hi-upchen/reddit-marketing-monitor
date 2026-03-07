@@ -1,7 +1,12 @@
 import { db, products } from './index'
+import { eq } from 'drizzle-orm'
 
 async function seed() {
-  await db.insert(products).values([
+  // Idempotent: only insert if product doesn't already exist by name
+  const existing = await db.select({ name: products.name }).from(products)
+  const existingNames = new Set(existing.map(p => p.name))
+
+  const toInsert = [
     {
       name: 'Kobo Note Up',
       url: 'https://kobo-up.runawayup.com/',
@@ -41,9 +46,16 @@ async function seed() {
       ]),
       isActive: true,
     },
-  ]).onConflictDoNothing()
+  ]
 
-  console.log('✅ Seeded products successfully')
+  const filtered = toInsert.filter(p => !existingNames.has(p.name))
+  if (filtered.length === 0) {
+    console.log('✅ Products already seeded — nothing to insert')
+    process.exit(0)
+  }
+
+  await db.insert(products).values(filtered)
+  console.log(`✅ Seeded ${filtered.length} product(s) successfully`)
   process.exit(0)
 }
 
