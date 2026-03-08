@@ -44,13 +44,18 @@ Reddit post:
 Title: ${title}
 Body: ${body.slice(0, 1500)}
 
-Rate this post's relevance 1-10 for whether a reply mentioning this product would be:
-- Welcome and helpful (not spammy)
-- The post author is clearly experiencing a problem this product solves
-- The subreddit context makes it appropriate
+Score this post 1-10 using these strict criteria:
+
+9-10: Post author is DIRECTLY asking how to export/access Kobo highlights, notes, or annotations. They have this exact problem right now.
+7-8: Post is about a Kobo limitation that this product directly solves (e.g. sideloaded book issues, export failures, stylus annotation questions).
+5-6: Kobo user who might benefit but not explicitly asking about the problem this solves.
+3-4: General Kobo discussion, tangentially related.
+1-2: Not relevant — general e-reader chat, hardware questions, unrelated topics.
+
+Be strict. Most posts should score 3-5. Only score 8+ if the person is EXPLICITLY asking about exporting highlights/notes/annotations from Kobo.
 
 Respond in this exact JSON format (nothing else):
-{"score": 7, "reason": "One sentence explaining the relevance score"}`
+{"score": 4, "reason": "One sentence explaining the relevance score"}`
 
   try {
     const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' })
