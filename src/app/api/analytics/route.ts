@@ -12,6 +12,24 @@ export async function GET(req: NextRequest) {
   const baseConditions = [gte(redditPosts.fetchedAt, since)]
   if (productId) baseConditions.push(eq(redditPosts.productId, productId))
 
+  const allPostsForKeywords = await db
+    .select({ matchedKeywords: redditPosts.matchedKeywords })
+    .from(redditPosts)
+    .where(and(...baseConditions))
+
+  // Tally keyword counts from JSON arrays
+  const keywordCounts: Record<string, number> = {}
+  for (const row of allPostsForKeywords) {
+    const kws: string[] = JSON.parse(row.matchedKeywords as string) ?? []
+    for (const kw of kws) {
+      keywordCounts[kw] = (keywordCounts[kw] ?? 0) + 1
+    }
+  }
+  const byKeyword = Object.entries(keywordCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([keyword, count]) => ({ keyword, count }))
+
   const [byTierRaw, bySubredditRaw, totalRaw, replyRateRaw] = await Promise.all([
     // Posts by relevance tier
     db
@@ -58,6 +76,7 @@ export async function GET(req: NextRequest) {
     total: totalRaw[0]?.count ?? 0,
     byTier: byTierRaw,
     bySubreddit: bySubredditRaw,
+    byKeyword,
     replyRate: totalHigh > 0 ? Math.round((posted / totalHigh) * 100) : 0,
     posted,
     totalHigh,

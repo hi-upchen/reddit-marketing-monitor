@@ -19,10 +19,16 @@ interface SubredditCount {
   count: number
 }
 
+interface KeywordCount {
+  keyword: string
+  count: number
+}
+
 interface AnalyticsData {
   total: number
   byTier: TierCount[]
   bySubreddit: SubredditCount[]
+  byKeyword: KeywordCount[]
   replyRate: number
   posted: number
   totalHigh: number
@@ -135,24 +141,40 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      {/* Top subreddits */}
-      <div>
-        <h2 className="font-semibold mb-3">Top Subreddits</h2>
-        {data.bySubreddit.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No data yet</p>
-        ) : (
-          <div className="space-y-1">
-            {data.bySubreddit.map(s => (
-              <div
-                key={s.subreddit}
-                className="flex justify-between text-sm border-b py-1.5"
-              >
-                <span>r/{s.subreddit}</span>
-                <span className="text-muted-foreground">{s.count} posts</span>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Top subreddits */}
+        <div>
+          <h2 className="font-semibold mb-3">Top Subreddits</h2>
+          {data.bySubreddit.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No data yet</p>
+          ) : (
+            <div className="space-y-1">
+              {data.bySubreddit.map(s => (
+                <div key={s.subreddit} className="flex justify-between text-sm border-b py-1.5">
+                  <span>r/{s.subreddit}</span>
+                  <span className="text-muted-foreground">{s.count} posts</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Top keywords */}
+        <div>
+          <h2 className="font-semibold mb-3">Top Keywords</h2>
+          {(data.byKeyword ?? []).length === 0 ? (
+            <p className="text-muted-foreground text-sm">No data yet</p>
+          ) : (
+            <div className="space-y-1">
+              {data.byKeyword.map(k => (
+                <div key={k.keyword} className="flex justify-between text-sm border-b py-1.5">
+                  <span className="font-mono text-xs">{k.keyword}</span>
+                  <span className="text-muted-foreground">{k.count} posts</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

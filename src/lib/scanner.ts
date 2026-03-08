@@ -18,11 +18,24 @@ interface RedditPostData {
   permalink: string
 }
 
-const REDDIT_SEARCH_URL = 'https://oauth.reddit.com'
-const USER_AGENT = 'RedditMarketingMonitor/1.0'
-const DELAY_MS = 1200 // ~50 req/min, well under 100/min limit
+const REDDIT_OAUTH_URL = 'https://oauth.reddit.com'
+const REDDIT_PUBLIC_URL = 'https://www.reddit.com'
+const USER_AGENT = 'RedditMarketingMonitor/1.0 (personal tool)'
+// Public API: ~10 req/min limit → 7s delay. OAuth API: 100 req/min → 1.2s delay.
+const DELAY_MS_PUBLIC = 7000
+const DELAY_MS_OAUTH = 1200
 const MAX_BODY_CHARS = 2000
-const DAYS_BACK = 7
+
+async function getScanSettings(): Promise<{ daysBack: number }> {
+  try {
+    const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'scan_settings'))
+    if (rows.length) {
+      const s = JSON.parse(rows[0].value)
+      return { daysBack: Number(s.daysBack) || 7 }
+    }
+  } catch {}
+  return { daysBack: 7 }
+}
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -31,26 +44,27 @@ function sleep(ms: number) {
 const MAX_RETRIES = 3
 
 async function searchReddit(
-  token: string,
   keyword: string,
   subreddit: string | null,
+  daysBack: number,
+  oauthToken: string | null,
   attempt = 1
 ): Promise<RedditPostData[]> {
-  const cutoff = Math.floor(Date.now() / 1000) - DAYS_BACK * 86400
+  const cutoff = Math.floor(Date.now() / 1000) - daysBack * 86400
 
+  // Use OAuth API if token available, otherwise fall back to public API
+  const baseUrl = oauthToken ? REDDIT_OAUTH_URL : REDDIT_PUBLIC_URL
   let url: string
   if (subreddit) {
-    url = `${REDDIT_SEARCH_URL}/r/${subreddit}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=on&sort=new&t=week&limit=25`
+    url = `${baseUrl}/r/${subreddit}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=on&sort=new&t=week&limit=25`
   } else {
-    url = `${REDDIT_SEARCH_URL}/search.json?q=${encodeURIComponent(keyword)}&sort=new&t=week&limit=25`
+    url = `${baseUrl}/search.json?q=${encodeURIComponent(keyword)}&sort=new&t=week&limit=25`
   }
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'User-Agent': USER_AGENT,
-    },
-  })
+  const headers: Record<string, string> = { 'User-Agent': USER_AGENT }
+  if (oauthToken) headers['Authorization'] = `Bearer ${oauthToken}`
+
+  const res = await fetch(url, { headers })
 
   if (res.status === 429) {
     if (attempt >= MAX_RETRIES) {
@@ -59,7 +73,7 @@ async function searchReddit(
     const retryAfter = Math.min(parseInt(res.headers.get('retry-after') ?? '60', 10), 120)
     console.log(`[scanner] Rate limited. Waiting ${retryAfter}s... (attempt ${attempt}/${MAX_RETRIES})`)
     await sleep(retryAfter * 1000)
-    return searchReddit(token, keyword, subreddit, attempt + 1)
+    return searchReddit(keyword, subreddit, daysBack, oauthToken, attempt + 1)
   }
 
   if (!res.ok) {
@@ -117,8 +131,16 @@ export async function runScan(triggeredBy: 'manual' | 'scheduled' = 'manual') {
   }> = []
 
   try {
-    const token = await getToken()
-    if (!token) throw new Error('Reddit not connected — please connect your Reddit account')
+    const { daysBack } = await getScanSettings()
+
+    // Try OAuth first; fall back to public API if not connected
+    const token = await getToken().catch(() => null)
+    const oauthToken = token?.accessToken ?? null
+    const DELAY_MS = oauthToken ? DELAY_MS_OAUTH : DELAY_MS_PUBLIC
+
+    if (!oauthToken) {
+      console.log('[scanner] No Reddit OAuth token — using public API (read-only, 10 req/min)')
+    }
 
     const activeProducts = await db
       .select()
@@ -149,7 +171,7 @@ export async function runScan(triggeredBy: 'manual' | 'scheduled' = 'manual') {
 
         for (const sub of searchTargets) {
           try {
-            const posts = await searchReddit(token.accessToken, keyword, sub)
+            const posts = await searchReddit(keyword, sub, daysBack, oauthToken)
             totalFound += posts.length
 
             for (const post of posts) {

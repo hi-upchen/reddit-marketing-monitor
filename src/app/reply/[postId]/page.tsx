@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false })
 import { Badge } from '@/components/ui/badge'
 import {
   Select,
@@ -18,7 +20,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { ExternalLink, RefreshCw, Copy, Send, ArrowLeft } from 'lucide-react'
+import { ExternalLink, RefreshCw, Copy, Send, ArrowLeft, Eye, Edit2, Link as LinkIcon } from 'lucide-react'
 import Link from 'next/link'
 
 interface Draft {
@@ -56,6 +58,8 @@ export default function ReplyPage() {
   const [postedUrl, setPostedUrl] = useState<string | null>(null)
   const [postError, setPostError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showPreview, setShowPreview] = useState(false)
+  const [productUrl, setProductUrl] = useState<string>('')
 
   async function loadData() {
     setLoading(true)
@@ -69,6 +73,20 @@ export default function ReplyPage() {
     const p = postData.post ?? postData
     setPost(p)
     setDrafts(draftsData)
+
+    // Load product URL for quick-insert
+    if (p.productId) {
+      fetch(`/api/products/${p.productId}`).then(r => r.json()).then(prod => {
+        if (prod?.url) {
+          const campaign = (prod.name || '').toLowerCase().replace(/\s+/g, '-')
+          const subreddit = p.subreddit || ''
+          const utmUrl = prod.url.includes('?')
+            ? `${prod.url}&utm_source=reddit&utm_medium=comment&utm_campaign=${campaign}&utm_content=${subreddit}`
+            : `${prod.url}?utm_source=reddit&utm_medium=comment&utm_campaign=${campaign}&utm_content=${subreddit}`
+          setProductUrl(utmUrl)
+        }
+      }).catch(() => {})
+    }
 
     if (draftsData.length > 0) {
       setCurrentDraftId(draftsData[0].id)
@@ -225,13 +243,46 @@ export default function ReplyPage() {
           </div>
         )}
 
-        <Textarea
-          value={editedBody}
-          onChange={e => setEditedBody(e.target.value)}
-          rows={10}
-          placeholder="Generate a draft or write your reply here..."
-          className="font-mono text-sm"
-        />
+        {/* Edit / Preview toggle + quick-insert */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex gap-1">
+            <Button
+              size="sm" variant={!showPreview ? 'secondary' : 'ghost'}
+              onClick={() => setShowPreview(false)}
+            >
+              <Edit2 size={13} className="mr-1" /> Edit
+            </Button>
+            <Button
+              size="sm" variant={showPreview ? 'secondary' : 'ghost'}
+              onClick={() => setShowPreview(true)}
+            >
+              <Eye size={13} className="mr-1" /> Preview
+            </Button>
+          </div>
+          {productUrl && (
+            <Button
+              size="sm" variant="outline"
+              onClick={() => setEditedBody(b => b ? `${b}\n\n${productUrl}` : productUrl)}
+              title="Insert product link with UTM"
+            >
+              <LinkIcon size={13} className="mr-1" /> Insert Product Link
+            </Button>
+          )}
+        </div>
+
+        {showPreview ? (
+          <div className="min-h-[200px] border rounded-md p-3 text-sm prose prose-sm max-w-none bg-gray-50">
+            <ReactMarkdown>{editedBody || '*Nothing to preview yet.*'}</ReactMarkdown>
+          </div>
+        ) : (
+          <Textarea
+            value={editedBody}
+            onChange={e => setEditedBody(e.target.value)}
+            rows={10}
+            placeholder="Generate a draft or write your reply here..."
+            className="font-mono text-sm"
+          />
+        )}
         <p className="text-xs text-muted-foreground text-right">
           {editedBody.length.toLocaleString()} / 10,000 chars
         </p>
