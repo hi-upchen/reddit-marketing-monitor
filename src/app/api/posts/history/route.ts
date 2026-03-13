@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuth(); if (denied) return denied
   const { searchParams } = new URL(req.url)
   const rawSearch = searchParams.get('q') ?? ''
   const search = rawSearch.slice(0, 200).replace(/[%_\\]/g, '\\$&') || null
@@ -32,16 +34,20 @@ export async function GET(req: NextRequest) {
     values
   )
 
-  return NextResponse.json(rows.map(r => ({
-    post: {
-      id: r.id, redditPostId: r.reddit_post_id, productId: r.product_id,
-      subreddit: r.subreddit, title: r.title, body: r.body, author: r.author,
-      score: r.score, commentCount: r.comment_count, url: r.url,
-      matchedKeywords: JSON.parse(r.matched_keywords),
-      relevanceScore: r.relevance_score, relevanceTier: r.relevance_tier,
-      relevanceReason: r.relevance_reason, status: r.status,
-      redditCreatedAt: r.reddit_created_at, fetchedAt: r.fetched_at,
-    },
-    product: r.p_id ? { id: r.p_id, name: r.p_name } : null,
-  })))
+  return NextResponse.json(rows.map(r => {
+    let matchedKeywords: string[] = []
+    try { matchedKeywords = JSON.parse(r.matched_keywords) ?? [] } catch { /* malformed — skip */ }
+    return {
+      post: {
+        id: r.id, redditPostId: r.reddit_post_id, productId: r.product_id,
+        subreddit: r.subreddit, title: r.title, body: r.body, author: r.author,
+        score: r.score, commentCount: r.comment_count, url: r.url,
+        matchedKeywords,
+        relevanceScore: r.relevance_score, relevanceTier: r.relevance_tier,
+        relevanceReason: r.relevance_reason, status: r.status,
+        redditCreatedAt: r.reddit_created_at, fetchedAt: r.fetched_at,
+      },
+      product: r.p_id ? { id: r.p_id, name: r.p_name } : null,
+    }
+  }))
 }

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
+  const denied = await requireAuth(); if (denied) return denied
   const { searchParams } = new URL(req.url)
   const productId = searchParams.get('productId')
   const VALID_DAYS = [7, 14, 30, 60, 90]
@@ -31,7 +33,8 @@ export async function GET(req: NextRequest) {
 
   const keywordCounts: Record<string, number> = {}
   for (const row of keywordRows) {
-    const kws: string[] = JSON.parse(row.matched_keywords) ?? []
+    let kws: string[] = []
+    try { kws = JSON.parse(row.matched_keywords) ?? [] } catch { /* malformed — skip row */ }
     for (const kw of kws) {
       keywordCounts[kw] = (keywordCounts[kw] ?? 0) + 1
     }

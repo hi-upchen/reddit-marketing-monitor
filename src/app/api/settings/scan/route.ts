@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 const SCAN_KEY = 'scan_settings'
 
@@ -9,6 +10,7 @@ export const DEFAULT_SCAN_SETTINGS = {
 }
 
 export async function GET() {
+  const denied = await requireAuth(); if (denied) return denied
   const rows = await query<{ value: string }>('SELECT value FROM app_settings WHERE key = ?', [SCAN_KEY])
   const settings = rows.length
     ? { ...DEFAULT_SCAN_SETTINGS, ...JSON.parse(rows[0].value) }
@@ -27,6 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuth(); if (denied) return denied
   const body = await req.json()
   const VALID_INTERVALS = [1, 3, 6, 12, 24]
   const VALID_DAYS = [1, 3, 7, 30]
@@ -38,7 +41,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'daysBack must be 1, 3, 7, or 30' }, { status: 400 })
   }
 
-  const merged = { ...DEFAULT_SCAN_SETTINGS, ...body }
+  // Only pick known keys to prevent arbitrary data injection
+  const safe: Partial<typeof DEFAULT_SCAN_SETTINGS> = {}
+  if (body.intervalHours !== undefined) safe.intervalHours = Number(body.intervalHours)
+  if (body.daysBack !== undefined) safe.daysBack = Number(body.daysBack)
+  const merged = { ...DEFAULT_SCAN_SETTINGS, ...safe }
   const id = crypto.randomUUID()
   await execute(
     `INSERT INTO app_settings (id, key, value, updated_at) VALUES (?, ?, ?, ?)

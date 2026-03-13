@@ -47,7 +47,16 @@ export default function ScanPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/scan/history').then(r => r.json()),
+      fetch('/api/settings/scan').then(r => r.json()),
+    ]).then(([logsData, settingsData]) => {
+      setLogs(logsData)
+      setSettings(settingsData)
+      setLoading(false)
+    }).catch(() => {})
+  }, [])
 
   async function scanNow() {
     setScanning(true)
@@ -56,19 +65,23 @@ export default function ScanPage() {
       const res = await fetch('/api/scan', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) { setScanError(data.error ?? 'Scan failed'); setScanning(false); return }
-      // Poll until done
+      // Poll with increasing intervals: 5s, 10s, 15s, then every 15s
+      let attempt = 0
       const poll = async () => {
-        await loadData()
+        attempt++
         const logs: ScanLog[] = await fetch('/api/scan/history').then(r => r.json())
+        setLogs(logs)
         const latest = logs[0]
         if (!latest || latest.status === 'completed' || latest.status === 'failed') {
           setScanning(false)
           if (latest?.status === 'failed' && latest.errorMessage) setScanError(latest.errorMessage)
+          fetch('/api/settings/scan').then(r => r.json()).then(setSettings).catch(() => {})
         } else {
-          setTimeout(poll, 5000)
+          const delay = Math.min(attempt * 5000, 15000)
+          setTimeout(poll, delay)
         }
       }
-      setTimeout(poll, 3000)
+      setTimeout(poll, 5000)
     } catch {
       setScanError('Network error'); setScanning(false)
     }
@@ -127,9 +140,9 @@ export default function ScanPage() {
       )}
 
       {/* Scan Settings */}
-      <Card>
+      <Card className="overflow-visible">
         <CardHeader><CardTitle>Scan Settings</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 overflow-visible">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <Label>Scan Frequency</Label>
@@ -156,10 +169,11 @@ export default function ScanPage() {
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">Last 24 hours</SelectItem>
-                  <SelectItem value="3">Last 3 days</SelectItem>
                   <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="14">Last 14 days</SelectItem>
                   <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="60">Last 60 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">How far back to search for posts.</p>
@@ -180,7 +194,7 @@ export default function ScanPage() {
         {loading ? (
           <p className="text-muted-foreground text-sm">Loading...</p>
         ) : logs.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No scans yet. Click "Scan Now" to start.</p>
+          <p className="text-muted-foreground text-sm">No scans yet. Click &quot;Scan Now&quot; to start.</p>
         ) : (
           <div className="space-y-2">
             {logs.map(log => (

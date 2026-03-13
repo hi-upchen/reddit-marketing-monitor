@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
 import { getToken } from '@/lib/reddit-auth'
+import { requireAuth } from '@/lib/auth'
 
 export async function POST() {
+  const denied = await requireAuth(); if (denied) return denied
   const token = await getToken()
   if (!token) return NextResponse.json({ error: 'Reddit not connected' }, { status: 401 })
 

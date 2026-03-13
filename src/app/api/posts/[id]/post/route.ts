@@ -1,14 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
 import { getToken } from '@/lib/reddit-auth'
+import { requireAuth } from '@/lib/auth'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireAuth(); if (denied) return denied
   const { id } = await params
   const { draftId, body } = await req.json()
 
   if (!draftId) return NextResponse.json({ error: 'draftId is required' }, { status: 400 })
   if (!body || typeof body !== 'string' || body.trim().length === 0) {
     return NextResponse.json({ error: 'Reply body cannot be empty' }, { status: 400 })
+  }
+
+  // IDOR guard: verify the draft belongs to this post before posting
+  const draftCheck = await query<{ id: string }>(
+    'SELECT id FROM reply_drafts WHERE id = ? AND post_id = ?',
+    [draftId, id]
+  )
+  if (!draftCheck.length) {
+    return NextResponse.json({ error: 'Draft not found or does not belong to this post' }, { status: 404 })
   }
 
   const posts = await query<{ id: string; reddit_post_id: string; status: string }>(
@@ -40,7 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const data = await res.json()
   if (data.json?.errors?.length > 0) {
-    return NextResponse.json({ error: data.json.errors[0][1] ?? 'Reddit API error' }, { status: 400 })
+    console.error('[post] Reddit API error:', data.json.errors)
+    return NextResponse.json({ error: 'Reddit API error' }, { status: 400 })
   }
 
   const comment = data.json?.data?.things?.[0]?.data

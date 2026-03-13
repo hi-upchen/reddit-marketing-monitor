@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireAuth(); if (denied) return denied
   const { id } = await params
   const rows = await query<{ id: string; name: string; url: string; description: string; problems_solved: string; features: string; target_audience: string; reply_tone: string; promotion_intensity: string; keywords: string; subreddits: string; is_active: number; created_at: string }>(
     'SELECT * FROM products WHERE id = ?', [id]
@@ -21,6 +23,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireAuth(); if (denied) return denied
   const { id } = await params
   const body = await req.json()
 

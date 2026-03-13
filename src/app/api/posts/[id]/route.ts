@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireAuth(); if (denied) return denied
   const { id } = await params
   const rows = await query<{
     id: string; reddit_post_id: string; product_id: string; subreddit: string
@@ -17,12 +19,14 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
   )
   if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const r = rows[0]
+  let matchedKeywords: string[] = []
+  try { matchedKeywords = JSON.parse(r.matched_keywords) ?? [] } catch { /* malformed — skip */ }
   return NextResponse.json({
     post: {
       id: r.id, redditPostId: r.reddit_post_id, productId: r.product_id,
       subreddit: r.subreddit, title: r.title, body: r.body, author: r.author,
       score: r.score, commentCount: r.comment_count, url: r.url,
-      matchedKeywords: JSON.parse(r.matched_keywords),
+      matchedKeywords,
       relevanceScore: r.relevance_score, relevanceTier: r.relevance_tier,
       relevanceReason: r.relevance_reason, status: r.status,
       redditCreatedAt: r.reddit_created_at, fetchedAt: r.fetched_at,
@@ -34,6 +38,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
 const ALLOWED_STATUS = ['new', 'draft', 'approved', 'posted', 'skipped', 'bookmarked']
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await requireAuth(); if (denied) return denied
   const { id } = await params
   const body = await req.json()
 
@@ -46,7 +51,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'SELECT * FROM reddit_posts WHERE id = ?', [id]
     )
     if (!rows.length) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ ...rows[0], matchedKeywords: JSON.parse(rows[0].matched_keywords) })
+    let kws: string[] = []
+    try { kws = JSON.parse(rows[0].matched_keywords) ?? [] } catch { /* malformed — skip */ }
+    return NextResponse.json({ ...rows[0], matchedKeywords: kws })
   }
 
   return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 const NOTIF_KEY = 'notification_settings'
 
@@ -9,12 +10,10 @@ export const DEFAULT_NOTIF_SETTINGS = {
   frequency: 'digest',
   quietStart: '23:00',
   quietEnd: '08:00',
-  telegramEnabled: false,
-  telegramBotToken: '',
-  telegramChatId: '',
 }
 
 export async function GET() {
+  const denied = await requireAuth(); if (denied) return denied
   const rows = await query<{ value: string }>('SELECT value FROM app_settings WHERE key = ?', [NOTIF_KEY])
   const settings = rows.length
     ? { ...DEFAULT_NOTIF_SETTINGS, ...JSON.parse(rows[0].value) }
@@ -23,6 +22,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuth(); if (denied) return denied
   const body = await req.json()
 
   const VALID_THRESHOLDS = ['high', 'high,medium', 'all']
@@ -35,10 +35,9 @@ export async function POST(req: NextRequest) {
   if (body.quietStart !== undefined && !TIME_RE.test(body.quietStart)) errors.push('quietStart must be HH:MM format')
   if (body.quietEnd !== undefined && !TIME_RE.test(body.quietEnd)) errors.push('quietEnd must be HH:MM format')
   if (body.email !== undefined && typeof body.email !== 'string') errors.push('email must be a string')
-  if (body.telegramEnabled !== undefined && typeof body.telegramEnabled !== 'boolean') errors.push('telegramEnabled must be a boolean')
   if (errors.length) return NextResponse.json({ error: errors.join('; ') }, { status: 400 })
 
-  const ALLOWED = ['email', 'threshold', 'frequency', 'quietStart', 'quietEnd', 'telegramEnabled', 'telegramBotToken', 'telegramChatId']
+  const ALLOWED = ['email', 'threshold', 'frequency', 'quietStart', 'quietEnd']
   const safe: Record<string, unknown> = {}
   for (const k of ALLOWED) { if (body[k] !== undefined) safe[k] = body[k] }
 

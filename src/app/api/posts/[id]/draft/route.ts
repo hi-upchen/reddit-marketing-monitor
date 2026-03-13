@@ -17,7 +17,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const denied = await requireAuth(); if (denied) return denied
   const { id } = await params
   const body = await req.json().catch(() => ({}))
-  const userPrompt: string | undefined = body.prompt?.trim() || undefined
+  const rawPrompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
+  if (rawPrompt.length > 500) {
+    return NextResponse.json({ error: 'Prompt must be 500 characters or less' }, { status: 400 })
+  }
+  const userPrompt: string | undefined = rawPrompt || undefined
 
   // Fetch post
   const posts = await query<{
@@ -73,13 +77,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Save all successful drafts
   const savedDrafts = []
   for (const s of succeeded) {
-    const draftId = crypto.randomUUID()
-    await execute(
-      `INSERT INTO reply_drafts (id, post_id, product_id, body, version, variant) VALUES (?, ?, ?, ?, ?, ?)`,
-      [draftId, id, product.id, s.body, version, s.variant]
-    )
-    const [saved] = await query('SELECT * FROM reply_drafts WHERE id = ?', [draftId])
-    savedDrafts.push(saved)
+    try {
+      const draftId = crypto.randomUUID()
+      await execute(
+        `INSERT INTO reply_drafts (id, post_id, product_id, body, version, variant) VALUES (?, ?, ?, ?, ?, ?)`,
+        [draftId, id, product.id, s.body, version, s.variant]
+      )
+      const [saved] = await query('SELECT * FROM reply_drafts WHERE id = ?', [draftId])
+      savedDrafts.push(saved)
+    } catch (e) {
+      console.error(`[draft] Failed to save variant ${s.variant}:`, e)
+    }
+  }
+
+  if (savedDrafts.length === 0) {
+    return NextResponse.json({ error: 'Generated drafts but failed to save them' }, { status: 500 })
   }
 
   await execute(`UPDATE reddit_posts SET status = 'draft' WHERE id = ?`, [id])

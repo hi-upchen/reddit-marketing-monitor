@@ -20,10 +20,18 @@ export async function register() {
       []
     ).catch(() => {})
 
-    // Drop old reply_drafts (had incorrect FK: product_id referenced reddit_posts instead of products)
-    await execute(`DROP TABLE IF EXISTS reply_drafts`, []).catch(() => {})
+    // Migrate reply_drafts: check if table has the correct schema (variant column + correct FK)
+    // Only drop+recreate if the old broken schema is detected (missing variant column)
+    const { query } = await import('@/lib/db')
+    const hasVariant = await query<{ name: string }>(
+      `SELECT name FROM pragma_table_info('reply_drafts') WHERE name = 'variant'`, []
+    ).catch(() => [])
 
-    // Recreate reply_drafts with corrected FK and variant column
+    if (hasVariant.length === 0) {
+      // Table either doesn't exist or has old schema — safe to recreate
+      await execute(`DROP TABLE IF EXISTS reply_drafts`, []).catch(() => {})
+    }
+
     await execute(`CREATE TABLE IF NOT EXISTS reply_drafts (
       id TEXT PRIMARY KEY,
       post_id TEXT NOT NULL REFERENCES reddit_posts(id),

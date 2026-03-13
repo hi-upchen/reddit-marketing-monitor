@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, execute } from '@/lib/db'
+import { requireAuth } from '@/lib/auth'
 
 export async function GET() {
+  const denied = await requireAuth(); if (denied) return denied
   const rows = await query<{
     id: string; name: string; url: string; description: string
     problems_solved: string; features: string; target_audience: string
@@ -22,6 +24,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAuth(); if (denied) return denied
   const body = await req.json()
 
   const required = ['name', 'url', 'description', 'problemsSolved', 'features', 'targetAudience']

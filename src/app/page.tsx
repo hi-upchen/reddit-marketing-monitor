@@ -36,7 +36,6 @@ interface PostRow {
 
 export default function DashboardPage() {
   const [allPosts, setAllPosts] = useState<PostRow[]>([])
-  const [posts, setPosts] = useState<PostRow[]>([])
   const [products, setProductsList] = useState<Product[]>([])
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -59,18 +58,37 @@ export default function DashboardPage() {
     if (productFilter !== 'all') params.set('productId', productFilter)
     params.set('status', statusFilter)
     const res = await fetch(`/api/posts?${params}`)
+    if (!res.ok) return
     const data = await res.json()
-    setAllPosts(data)
+    if (Array.isArray(data)) setAllPosts(data)
   }, [productFilter, statusFilter])
 
   useEffect(() => {
-    fetch('/api/products').then(r => r.json()).then(setProductsList)
+    fetch('/api/products').then(r => {
+      if (!r.ok) return []
+      return r.json()
+    }).then(data => {
+      if (Array.isArray(data)) setProductsList(data)
+    })
   }, [])
 
-  useEffect(() => { loadPosts() }, [loadPosts])
-
-  // Apply client-side filters + sort
   useEffect(() => {
+    const controller = new AbortController()
+    fetch(`/api/posts?${new URLSearchParams({
+      ...(productFilter !== 'all' ? { productId: productFilter } : {}),
+      status: statusFilter,
+    })}`, { signal: controller.signal })
+      .then(r => {
+        if (!r.ok) return []
+        return r.json()
+      })
+      .then(data => { if (Array.isArray(data)) setAllPosts(data) })
+      .catch(() => {})
+    return () => controller.abort()
+  }, [productFilter, statusFilter])
+
+  // Derive filtered + sorted posts (no effect needed)
+  const filteredPosts = (() => {
     let filtered = [...allPosts]
 
     // Tier filter
@@ -92,10 +110,11 @@ export default function DashboardPage() {
       return new Date(b.post.redditCreatedAt).getTime() - new Date(a.post.redditCreatedAt).getTime()
     })
 
-    setPosts(filtered)
-  }, [allPosts, tierFilter, subredditFilter, sortBy])
+    return filtered
+  })()
 
   // Derive unique subreddits for filter
+  const posts = filteredPosts
   const subreddits = [...new Set(allPosts.map(r => r.post.subreddit))].sort()
 
   async function handleScanNow() {

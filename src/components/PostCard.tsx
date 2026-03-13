@@ -34,6 +34,13 @@ interface PostCardProps {
   onAction: (id: string, action: string) => void
 }
 
+function timeAgo(date: string): string {
+  const diff = Date.now() - new Date(date).getTime()
+  const h = Math.floor(diff / 3600000)
+  const d = Math.floor(h / 24)
+  return d > 0 ? `${d}d ago` : h > 0 ? `${h}h ago` : 'just now'
+}
+
 export function PostCard({ post, productName, onAction }: PostCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [showUndo, setShowUndo] = useState(false)
@@ -45,13 +52,6 @@ export function PostCard({ post, productName, onAction }: PostCardProps) {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
     }
   }, [])
-
-  const timeAgo = (date: string) => {
-    const diff = Date.now() - new Date(date).getTime()
-    const h = Math.floor(diff / 3600000)
-    const d = Math.floor(h / 24)
-    return d > 0 ? `${d}d ago` : h > 0 ? `${h}h ago` : 'just now'
-  }
 
   async function handleSkip() {
     await onAction(post.id, 'skipped')

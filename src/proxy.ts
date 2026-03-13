@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createHmac, timingSafeEqual } from 'crypto'
 
 export const SESSION_COOKIE = 'rmm_session'
-const SESSION_VALUE_LENGTH = 64 // HMAC-SHA256 hex = 64 chars
+const SESSION_TOKEN_LENGTH = 64 // 32 random bytes → 64 hex chars
+const HEX_RE = /^[0-9a-f]+$/
 
 /**
  * Routes that don't need authentication.
@@ -12,7 +12,7 @@ const PUBLIC_PATHS: (string | RegExp)[] = [
   '/login',
   '/api/auth/login',
   '/api/auth/logout',
-  '/api/auth/reddit/callback', // receives OAuth redirect from Reddit
+  // OAuth callback now requires session auth via requireAuth()
   '/api/cron/scan',            // has its own CRON_SECRET auth
   /^\/_next\//,
   /^\/favicon/,
@@ -24,16 +24,16 @@ function isPublic(pathname: string): boolean {
   )
 }
 
-function computeSessionToken(password: string): string {
-  return createHmac('sha256', password).update('rmm-session-v1').digest('hex')
-}
-
+/**
+ * Middleware runs in Edge Runtime so cannot access the DB.
+ * It does a fast format check (64 hex chars) to reject obviously invalid tokens.
+ * Full DB validation happens in isAuthenticated() called by API routes.
+ */
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
   if (isPublic(pathname)) return NextResponse.next()
 
   const password = process.env.APP_PASSWORD
-  // If APP_PASSWORD isn't configured, block everything except public paths
   if (!password) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Server misconfiguration: APP_PASSWORD not set' }, { status: 500 })
@@ -42,19 +42,11 @@ export function proxy(req: NextRequest) {
   }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value
+  const hasValidFormat = typeof token === 'string'
+    && token.length === SESSION_TOKEN_LENGTH
+    && HEX_RE.test(token)
 
-  // Full HMAC comparison in middleware — no partial checks, no deferred trust
-  let valid = false
-  if (typeof token === 'string' && token.length === SESSION_VALUE_LENGTH) {
-    try {
-      const expected = computeSessionToken(password)
-      valid = timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'))
-    } catch {
-      valid = false
-    }
-  }
-
-  if (!valid) {
+  if (!hasValidFormat) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -63,6 +55,9 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
+  // Token has valid format — let through. API routes call isAuthenticated()
+  // for full DB validation. Page routes are client-side and make API calls
+  // which will be DB-validated.
   return NextResponse.next()
 }
 

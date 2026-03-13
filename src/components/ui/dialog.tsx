@@ -5,6 +5,12 @@ import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { XIcon } from "lucide-react"
 
+// Context to share onOpenChange down to DialogClose without prop-drilling
+interface DialogContextType {
+  onOpenChange?: (open: boolean) => void
+}
+const DialogContext = React.createContext<DialogContextType>({})
+
 interface DialogProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -13,21 +19,35 @@ interface DialogProps {
 
 function Dialog({ open = false, onOpenChange, children }: DialogProps) {
   const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  React.useEffect(() => { setMounted(true) }, [])
+
+  // Close on Escape key
+  React.useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onOpenChange?.(false)
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open, onOpenChange])
 
   if (!mounted || !open) return null
 
-  return createPortal(
-    <div data-slot="dialog">
-      {/* Backdrop */}
-      <div
-        data-slot="dialog-overlay"
-        className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm"
-        onClick={() => onOpenChange?.(false)}
-      />
-      {children}
-    </div>,
-    document.body
+  return (
+    <DialogContext.Provider value={{ onOpenChange }}>
+      {createPortal(
+        <div data-slot="dialog">
+          {/* Backdrop */}
+          <div
+            data-slot="dialog-overlay"
+            className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm"
+            onClick={() => onOpenChange?.(false)}
+          />
+          {children}
+        </div>,
+        document.body
+      )}
+    </DialogContext.Provider>
   )
 }
 
@@ -45,6 +65,8 @@ function DialogContent({
   return (
     <div
       data-slot="dialog-content"
+      role="dialog"
+      aria-modal="true"
       className={cn(
         "fixed left-1/2 top-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm shadow-lg ring-1 ring-foreground/10 sm:max-w-sm",
         className
@@ -63,12 +85,17 @@ function DialogContent({
 }
 
 function DialogClose({ className, onClick, children, ...props }: React.HTMLAttributes<HTMLButtonElement>) {
+  // Read onOpenChange from context so close button works without explicit wiring
+  const { onOpenChange } = React.useContext(DialogContext)
   return (
     <button
       data-slot="dialog-close"
       type="button"
       className={cn(className)}
-      onClick={onClick}
+      onClick={(e) => {
+        onOpenChange?.(false)
+        onClick?.(e as React.MouseEvent<HTMLButtonElement>)
+      }}
       {...props}
     >
       {children}
@@ -133,7 +160,7 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<"div">) {
 
 function DialogPortal({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  React.useEffect(() => { setMounted(true) }, [])
   if (!mounted) return null
   return createPortal(children, document.body)
 }

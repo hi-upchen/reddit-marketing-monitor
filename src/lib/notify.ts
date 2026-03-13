@@ -15,9 +15,6 @@ interface NotificationSettings {
   frequency: 'digest' | 'immediate'
   quietStart: string
   quietEnd: string
-  telegramEnabled: boolean
-  telegramBotToken: string
-  telegramChatId: string
 }
 
 function isQuietHours(quietStart: string, quietEnd: string): boolean {
@@ -38,19 +35,6 @@ async function getNotificationSettings(): Promise<NotificationSettings | null> {
   )
   if (!rows.length) return null
   return JSON.parse(rows[0].value) as NotificationSettings
-}
-
-async function sendTelegram(botToken: string, chatId: string, text: string) {
-  const url = `https://api.telegram.org/bot${botToken}/sendMessage`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
-  })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Telegram API error: ${err}`)
-  }
 }
 
 function escapeHtml(str: string): string {
@@ -104,26 +88,7 @@ export async function sendNewPostsNotification(posts: NotifiablePost[]) {
 
   if (isQuietHours(settings.quietStart || '23:00', settings.quietEnd || '08:00')) return
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
   if (settings.email) {
     try { await sendEmailDigest(settings, posts) } catch (e) { console.error('[notify] Email failed:', e) }
-  }
-
-  if (settings.telegramEnabled && settings.telegramBotToken && settings.telegramChatId) {
-    try {
-      if (settings.frequency === 'immediate') {
-        for (const post of posts) {
-          const text = `🔴 <b>New ${escapeHtml(post.relevanceTier)} match</b>\n<b>r/${escapeHtml(post.subreddit)}</b>\n<a href="${escapeHtml(post.url)}">${escapeHtml(post.title)}</a>\n<i>${escapeHtml(post.relevanceReason)}</i>\n\n<a href="${appUrl}/reply/${escapeHtml(post.id)}">Draft Reply →</a>`
-          await sendTelegram(settings.telegramBotToken, settings.telegramChatId, text)
-        }
-      } else {
-        const lines = posts.map(p =>
-          `• <b>r/${escapeHtml(p.subreddit)}</b> [${escapeHtml(p.relevanceTier)}]\n  <a href="${escapeHtml(p.url)}">${escapeHtml(p.title)}</a>`
-        ).join('\n\n')
-        const text = `📊 <b>RMM: ${posts.length} new post${posts.length > 1 ? 's' : ''}</b>\n\n${lines}\n\n<a href="${appUrl}">Open Dashboard →</a>`
-        await sendTelegram(settings.telegramBotToken, settings.telegramChatId, text)
-      }
-    } catch (e) { console.error('[notify] Telegram failed:', e) }
   }
 }

@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -15,9 +14,6 @@ interface NotificationSettings {
   frequency: string
   quietStart: string
   quietEnd: string
-  telegramEnabled: boolean
-  telegramBotToken: string
-  telegramChatId: string
 }
 
 export default function NotificationsSettingsPage() {
@@ -27,9 +23,6 @@ export default function NotificationsSettingsPage() {
     frequency: 'digest',
     quietStart: '23:00',
     quietEnd: '08:00',
-    telegramEnabled: false,
-    telegramBotToken: '',
-    telegramChatId: '',
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -102,44 +95,6 @@ export default function NotificationsSettingsPage() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">Notifications are suppressed during quiet hours (UTC).</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Telegram Notifications (Optional)</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Switch checked={settings.telegramEnabled} onCheckedChange={v => set('telegramEnabled', v)} />
-            <Label>Enable Telegram notifications</Label>
-          </div>
-
-          {settings.telegramEnabled && (
-            <>
-              <div className="space-y-1">
-                <Label>Bot Token</Label>
-                <Input
-                  type="password"
-                  value={settings.telegramBotToken}
-                  onChange={e => set('telegramBotToken', e.target.value)}
-                  placeholder="123456:ABC-DEF..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Get from <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="underline">@BotFather</a> on Telegram.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label>Chat ID</Label>
-                <Input
-                  value={settings.telegramChatId}
-                  onChange={e => set('telegramChatId', e.target.value)}
-                  placeholder="Your chat ID or group ID"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Send a message to your bot, then check <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>
-                </p>
-              </div>
-            </>
-          )}
         </CardContent>
       </Card>
 

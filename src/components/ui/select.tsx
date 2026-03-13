@@ -50,16 +50,23 @@ function Select({ value, defaultValue = "", onValueChange, children }: SelectPro
     setLabels(prev => prev[v] === label ? prev : { ...prev, [v]: label })
   }, [])
 
-  // Close on outside click
+  // Close on outside click or Escape key
   React.useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
+    const handleClick = (e: MouseEvent) => {
       if (!triggerRef.current?.closest('[data-slot="select-root"]')?.contains(e.target as Node)) {
         setOpen(false)
       }
     }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener("mousedown", handleClick)
+    document.addEventListener("keydown", handleKey)
+    return () => {
+      document.removeEventListener("mousedown", handleClick)
+      document.removeEventListener("keydown", handleKey)
+    }
   }, [open])
 
   return (
@@ -79,6 +86,7 @@ function SelectTrigger({ className, size = "default", children, ...props }: Reac
       ref={triggerRef}
       type="button"
       data-slot="select-trigger"
+      aria-haspopup="listbox"
       aria-expanded={open}
       onClick={() => setOpen(!open)}
       className={cn(
@@ -112,8 +120,9 @@ function SelectContent({ className, children }: { className?: string; children?:
   return (
     <div
       data-slot="select-content"
+      role="listbox"
       className={cn(
-        "absolute left-0 top-full z-50 mt-1 min-w-full overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
+        "absolute left-0 top-full z-50 mt-1 min-w-full max-h-60 overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10",
         className
       )}
     >
@@ -139,9 +148,16 @@ function SelectItem({ value, children, className, ...props }: React.ComponentPro
       data-slot="select-item"
       role="option"
       aria-selected={isSelected}
+      tabIndex={0}
       onClick={() => ctx.onValueChange(value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          ctx.onValueChange(value)
+        }
+      }}
       className={cn(
-        "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pl-2 pr-8 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground",
+        "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pl-2 pr-8 text-sm outline-none select-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
         className
       )}
       {...props}
@@ -179,11 +195,11 @@ function SelectSeparator({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-function SelectScrollUpButton({ className }: { className?: string }) {
+function SelectScrollUpButton(_props: { className?: string }) {
   return null // not needed for simple dropdown
 }
 
-function SelectScrollDownButton({ className }: { className?: string }) {
+function SelectScrollDownButton(_props: { className?: string }) {
   return null // not needed for simple dropdown
 }
 

@@ -1,8 +1,11 @@
 import { cookies } from 'next/headers'
-import { createHmac, timingSafeEqual } from 'crypto'
+import { NextResponse } from 'next/server'
+import { randomBytes, timingSafeEqual } from 'crypto'
+import { query, execute } from '@/lib/db'
 
 export const SESSION_COOKIE = 'rmm_session'
-const SESSION_VALUE_LENGTH = 64 // HMAC-SHA256 hex
+const SESSION_TOKEN_LENGTH = 64 // 32 random bytes → 64 hex chars
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 // Known-weak passwords to reject at startup
 const WEAK_PASSWORDS = new Set([
@@ -46,32 +49,70 @@ export function validateStartupSecrets(): void {
       'Run setup.sh to auto-generate a secure key.'
     )
   }
-
-  const geminiKey = process.env.GEMINI_API_KEY
-  if (geminiKey && geminiKey.startsWith('AIzaSy') && geminiKey === 'AIzaSyDmISK9OSLNo1OBdW_dFyyq_rq3cfx2j3U') {
-    console.error(
-      '[security] ⚠️  The Gemini API key in .env.local appears to be the shared development key. ' +
-      'Rotate it at https://aistudio.google.com/apikey'
-    )
-  }
-}
-
-export function computeSessionToken(): string {
-  return createHmac('sha256', getPassword()).update('rmm-session-v1').digest('hex')
 }
 
 /**
- * Constant-time session validation.
- * Used by individual API routes for defense-in-depth (middleware already checks).
+ * Create a new random session token, store it in the DB with expiry.
+ */
+export async function createSession(): Promise<string> {
+  const token = randomBytes(32).toString('hex')
+  const id = crypto.randomUUID()
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_MS).toISOString()
+  await execute(
+    `INSERT INTO sessions (id, token, expires_at) VALUES (?, ?, ?)`,
+    [id, token, expiresAt]
+  )
+  return token
+}
+
+/**
+ * Validate a session token against the DB. Constant-time comparison.
  */
 export async function isAuthenticated(): Promise<boolean> {
   try {
     const cookieStore = await cookies()
     const token = cookieStore.get(SESSION_COOKIE)?.value
-    if (!token || token.length !== SESSION_VALUE_LENGTH) return false
-    const expected = computeSessionToken()
-    return timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'))
+    if (!token || token.length !== SESSION_TOKEN_LENGTH) return false
+
+    const rows = await query<{ token: string; expires_at: string }>(
+      `SELECT token, expires_at FROM sessions WHERE token = ? LIMIT 1`,
+      [token]
+    )
+    if (!rows.length) return false
+
+    const row = rows[0]
+    if (new Date(row.expires_at) < new Date()) {
+      // Expired — clean it up
+      await execute(`DELETE FROM sessions WHERE token = ?`, [token])
+      return false
+    }
+
+    return timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(row.token, 'hex'))
   } catch {
     return false
   }
+}
+
+/**
+ * Revoke a specific session token.
+ */
+export async function revokeSession(token: string): Promise<void> {
+  await execute(`DELETE FROM sessions WHERE token = ?`, [token])
+}
+
+/**
+ * Revoke all sessions (e.g. on password change).
+ */
+export async function revokeAllSessions(): Promise<void> {
+  await execute(`DELETE FROM sessions`, [])
+}
+
+/**
+ * Guard for API routes. Returns a 401 response if not authenticated, or null if OK.
+ * Usage: const denied = await requireAuth(); if (denied) return denied;
+ */
+export async function requireAuth(): Promise<NextResponse | null> {
+  const authed = await isAuthenticated()
+  if (!authed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  return null
 }

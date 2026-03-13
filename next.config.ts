@@ -28,7 +28,7 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Next.js requires unsafe-inline/eval in dev
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
-      "connect-src 'self' https://generativelanguage.googleapis.com https://oauth.reddit.com https://www.reddit.com https://api.telegram.org https://api.resend.com",
+      "connect-src 'self' https://generativelanguage.googleapis.com https://oauth.reddit.com https://www.reddit.com https://api.resend.com",
       "font-src 'self'",
       "frame-ancestors 'none'",
     ].join('; '),

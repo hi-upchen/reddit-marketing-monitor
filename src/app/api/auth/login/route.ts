@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
-import { getPassword, computeSessionToken, SESSION_COOKIE } from '@/lib/auth'
+import { getPassword, createSession, SESSION_COOKIE } from '@/lib/auth'
 
 // In-memory rate limiter: max 5 attempts per IP per minute
 // Simple Map — resets on server restart, fine for a personal tool
@@ -9,11 +9,16 @@ const MAX_ATTEMPTS = 5
 const WINDOW_MS = 60_000 // 1 minute
 
 function getClientIp(req: NextRequest): string {
-  return (
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
-  )
+  // On Vercel/trusted reverse proxies, x-forwarded-for is set by the platform
+  // and cannot be spoofed. In other environments, fall back to a global bucket
+  // so the rate limiter can't be bypassed by spoofing headers.
+  if (process.env.VERCEL) {
+    return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'global'
+  }
+  // Self-hosted: don't trust client-provided headers; use a single global bucket.
+  // This means all clients share the rate limit, but for a single-user personal
+  // tool this is acceptable and prevents header-spoofing bypass.
+  return 'global'
 }
 
 function isRateLimited(ip: string): boolean {
@@ -72,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   recordSuccess(ip)
 
-  const sessionToken = computeSessionToken()
+  const sessionToken = await createSession()
   const res = NextResponse.json({ ok: true })
   res.cookies.set(SESSION_COOKIE, sessionToken, {
     httpOnly: true,

@@ -14,6 +14,7 @@ interface SwitchProps {
 function Switch({ checked = false, onCheckedChange, disabled, className, size = "default" }: SwitchProps) {
   return (
     <button
+      type="button"
       role="switch"
       aria-checked={checked}
       data-slot="switch"
